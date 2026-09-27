@@ -12,3 +12,39 @@ This bot is designed to automatically click on a specified color within a define
 - **Hotkey Controls**: Start/stop the bot with `Ctrl+S`, toggle clicking with `Ctrl+Space`, and select color with `F`.
 
 Built with PyAutoGUI, OpenCV, and Tkinter, this program is ideal for automating interactions in environments where specific color elements require consistent attention.
+
+## Run it
+
+Install Python 3.10 or newer, then install the dependencies:
+
+```bash
+python -m venv .venv
+```
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python Win-main.py
+```
+
+Linux:
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python Linux-main.py
+```
+
+On Linux, grant the terminal accessibility/input permissions requested by your desktop environment. On macOS, use the Linux entry point with Accessibility and Screen Recording permissions.
+
+## Use it with a browser game
+
+1. Open the game and keep the game window visible; do not minimize it.
+2. Move the pointer over the target game element and click **Set Color**. The current pointer position is sampled.
+3. Click **Set Search Area**, then drag a rectangle around the part of the game where that color can appear.
+4. Press **Ctrl+Space** or click **Toggle Clicking** until clicking is **ON**.
+5. Press **Ctrl+S** to start or stop scanning. Adjust **Loop Delay** if the game needs slower input.
+
+The bot clicks the first matching pixel in the selected area. Use it only with games and services where automation is allowed.

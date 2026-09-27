@@ -66,11 +66,17 @@ def click_color_in_area(area):
     global selected_color, running, clicking, loop_delay
     status_label.config(text="Clicking Started!")
     while running:
+        if area is None:
+            status_label.config(text="Set a search area before starting.")
+            break
+
         if clicking and selected_color:
             screenshot = pyautogui.screenshot(region=area)
-            screenshot_np = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
-            target_color = np.array(selected_color)
-            mask = cv2.inRange(screenshot_np, target_color - 20, target_color + 20)
+            screenshot_np = np.array(screenshot)
+            target_color = np.array(selected_color, dtype=np.int16)
+            lower_bound = np.clip(target_color - 20, 0, 255).astype(np.uint8)
+            upper_bound = np.clip(target_color + 20, 0, 255).astype(np.uint8)
+            mask = cv2.inRange(screenshot_np, lower_bound, upper_bound)
             coords = np.column_stack(np.where(mask > 0))
 
             if len(coords) > 0:
@@ -82,15 +88,34 @@ def click_color_in_area(area):
 
         time.sleep(loop_delay)
 
+    running = False
+    status_label.config(text="Script Stopped. Press 'Ctrl+S' to start.")
+
+
 def toggle_running():
     """Toggle the script running state on or off."""
     global running
-    running = not running
+    if not running and (selected_color is None or area is None or area[2] <= 0 or area[3] <= 0):
+        status_label.config(text="Set a color and a non-empty search area first.")
+        return
+
+    if not selected_color:
+        status_label.config(text="Select a color before starting the bot.")
+        return
+
+    if area is None:
+        status_label.config(text="Select a search area before starting the bot.")
+        return
+
     if running:
-        status_label.config(text="Script Running. Press 'Ctrl+S' to stop.")
-        threading.Thread(target=click_color_in_area, args=(area,)).start()
-    else:
+        running = False
         status_label.config(text="Script Stopped. Press 'Ctrl+S' to start.")
+        return
+
+    running = True
+    status_label.config(text="Script Running. Press 'Ctrl+S' to stop.")
+    threading.Thread(target=click_color_in_area, args=(area,), daemon=True).start()
+
 
 def toggle_clicking():
     """Enable or disable clicking."""
@@ -147,17 +172,22 @@ delay_label.pack(pady=5)
 # Keyboard listener for hotkeys
 def on_press(key):
     with lock:
+        if key in pressed_keys:
+            return
+
+        pressed_keys.add(key)
         try:
-            if key == keyboard.Key.ctrl_l and 's' in pressed_keys:
-                toggle_running()
-            elif key.char == 'f' and 'f' not in pressed_keys:
-                pressed_keys.add('f')
-                select_color()
-            elif key == keyboard.Key.space and keyboard.Key.ctrl in pressed_keys:
-                toggle_clicking()
-            pressed_keys.add(key)
+            char = key.char.lower()
         except AttributeError:
-            pass
+            char = None
+
+        ctrl_pressed = keyboard.Key.ctrl_l in pressed_keys or keyboard.Key.ctrl_r in pressed_keys
+        if char == 'f':
+            select_color()
+        elif char == 's' and ctrl_pressed:
+            toggle_running()
+        elif key == keyboard.Key.space and ctrl_pressed:
+            toggle_clicking()
 
 def on_release(key):
     with lock:
