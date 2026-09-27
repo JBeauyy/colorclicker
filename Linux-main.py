@@ -5,6 +5,9 @@ import time
 import threading
 import colorsys
 import re
+import os
+import sys
+import tempfile
 from pynput import keyboard, mouse
 import tkinter as tk
 from PIL import Image, ImageTk
@@ -12,6 +15,44 @@ from PIL import Image, ImageTk
 # Scanning has an explicit Stop button and Ctrl+S hotkey; avoid a corner check
 # leaving the hidden worker paused until the user manually moves the cursor.
 pyautogui.FAILSAFE = False
+
+
+def acquire_single_instance():
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p)
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        ctypes.set_last_error(0)
+        mutex = kernel32.CreateMutexW(None, True, "Local\\HelloByeLetsNot.ColorClicker")
+        if not mutex:
+            raise ctypes.WinError(ctypes.get_last_error())
+        if ctypes.get_last_error() == 183:
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            user32.MessageBoxW.argtypes = (ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint)
+            user32.MessageBoxW.restype = ctypes.c_int
+            user32.MessageBoxW(
+                None, "Color Clicker is already running.", "Color Clicker", 0x40
+            )
+            kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+            kernel32.CloseHandle(mutex)
+            sys.exit(0)
+        return mutex
+
+    import fcntl
+
+    lock_path = os.path.join(tempfile.gettempdir(), "hello-bye-color-clicker.lock")
+    lock_file = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("Color Clicker is already running.")
+        sys.exit(0)
+    return lock_file
+
+
+_instance_lock = acquire_single_instance()
 
 # Global variables
 selected_color = None
@@ -179,6 +220,10 @@ def drag_area_selection():
 
 def click_color_in_area(area):
     global selected_color, running, clicking, loop_delay
+    no_click_rescan_seconds = 5
+    last_click = time.monotonic()
+    last_idle_rescan = last_click
+    force_full_scan_until = 0
     last_status = None
 
     def update_status(message):
@@ -196,7 +241,14 @@ def click_color_in_area(area):
 
         if clicking and selected_color:
             try:
-                search_area = None if scan_full_screen else area
+                now = time.monotonic()
+                if now - last_click >= no_click_rescan_seconds and now - last_idle_rescan >= no_click_rescan_seconds:
+                    pyautogui.moveTo(5, 5, duration=0.1)
+                    last_idle_rescan = now
+                    force_full_scan_until = now + 2
+                    update_status("No click for 5 seconds; moving off the target and rescanning the full screen.")
+
+                search_area = None if scan_full_screen or now < force_full_scan_until else area
                 screenshot = pyautogui.screenshot(region=search_area)
                 screenshot_np = np.array(screenshot)
                 target_color = np.array(selected_color, dtype=np.int16)
@@ -228,15 +280,17 @@ def click_color_in_area(area):
                     target = (round(click_x), round(click_y))
                     pyautogui.moveTo(*target, duration=0.05)
                     pyautogui.click()
+                    last_click = time.monotonic()
                     left, top, width, height = bounds
                     screen_width, screen_height = pyautogui.size()
                     center_x = left + width // 2
                     center_y = top + height // 2
+                    margin = 80
                     exit_positions = [
-                        (center_x, top - 24),
-                        (center_x, top + height + 24),
-                        (left - 24, center_y),
-                        (left + width + 24, center_y),
+                        (center_x, top - margin),
+                        (center_x, top + height + margin),
+                        (left - margin, center_y),
+                        (left + width + margin, center_y),
                     ]
                     safe_positions = [
                         (x, y) for x, y in exit_positions
@@ -245,8 +299,17 @@ def click_color_in_area(area):
                     ]
                     if safe_positions:
                         cursor_x, cursor_y = pyautogui.position()
+                        far_positions = [
+                            position for position in safe_positions
+                            if min(
+                                abs(position[0] - left),
+                                abs(position[0] - (left + width)),
+                                abs(position[1] - top),
+                                abs(position[1] - (top + height)),
+                            ) >= margin
+                        ]
                         exit_x, exit_y = min(
-                            safe_positions,
+                            far_positions or safe_positions,
                             key=lambda position: (position[0] - cursor_x) ** 2 + (position[1] - cursor_y) ** 2,
                         )
                         pyautogui.moveTo(exit_x, exit_y, duration=0.05)
@@ -265,30 +328,7 @@ def click_color_in_area(area):
                 print(f"Unexpected scan error; retrying: {type(error).__name__}: {error}")
                 time.sleep(0.5)
 
-        time.sleep(loop_delay)
-
-def run_scanner_worker():
-    try:
-        click_color_in_area(area)
-    except Exception as error:
-        message = f"Scanner worker recovered from {type(error).__name__}: {error}"
-        print(message)
-        root.after(0, lambda text=message: status_label.config(text=text))
-
-
-def ensure_scanner_worker():
-    global scanner_thread
-    if running and (scanner_thread is None or not scanner_thread.is_alive()):
-        scanner_thread = threading.Thread(target=run_scanner_worker, daemon=True)
-        scanner_thread.start()
-
-
-def monitor_scanner_worker():
-    if running and (scanner_thread is None or not scanner_thread.is_alive()):
-        status_label.config(text="Scanner stopped unexpectedly; restarting it.")
-        ensure_scanner_worker()
-    root.after(500, monitor_scanner_worker)
-
+        time.sleep(max(loop_delay, 0.15))
 
 def toggle_running():
     global running, clicking, scanner_thread
@@ -317,7 +357,12 @@ def toggle_running():
     start_button.config(text="Stop Scanning")
     status_label.config(text="Starting scan. The app will minimize so the browser is visible.")
     root.iconify()
-    root.after(700, ensure_scanner_worker)
+    def start_scanner():
+        global scanner_thread
+        if running:
+            scanner_thread = threading.Thread(target=click_color_in_area, args=(area,), daemon=True)
+            scanner_thread.start()
+    root.after(700, start_scanner)
     
 def toggle_clicking():
     global clicking
@@ -453,5 +498,4 @@ def on_release(key):
 listener = keyboard.Listener(on_press=on_press, on_release=on_release)
 listener.start()
 
-root.after(500, monitor_scanner_worker)
 root.mainloop()
