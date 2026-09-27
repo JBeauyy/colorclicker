@@ -12,11 +12,6 @@ from pynput import keyboard, mouse
 import tkinter as tk
 from PIL import Image, ImageTk
 
-# Scanning has an explicit Stop button and Ctrl+S hotkey; avoid a corner check
-# leaving the hidden worker paused until the user manually moves the cursor.
-pyautogui.FAILSAFE = False
-
-
 def acquire_single_instance():
     if os.name == "nt":
         import ctypes
@@ -243,10 +238,9 @@ def click_color_in_area(area):
             try:
                 now = time.monotonic()
                 if now - last_click >= no_click_rescan_seconds and now - last_idle_rescan >= no_click_rescan_seconds:
-                    pyautogui.moveTo(5, 5, duration=0.1)
                     last_idle_rescan = now
                     force_full_scan_until = now + 2
-                    update_status("No click for 1 second; moving off the target and rescanning the full screen.")
+                    update_status("No click for 1 second; rescanning the full screen.")
 
                 search_area = None if scan_full_screen or now < force_full_scan_until else area
                 screenshot = pyautogui.screenshot(region=search_area)
