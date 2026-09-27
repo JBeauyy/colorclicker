@@ -9,6 +9,10 @@ from pynput import keyboard, mouse
 import tkinter as tk
 from PIL import Image, ImageTk
 
+# Scanning has an explicit Stop button and Ctrl+S hotkey; avoid a corner check
+# leaving the hidden worker paused until the user manually moves the cursor.
+pyautogui.FAILSAFE = False
+
 # Global variables
 selected_color = None
 running = False
@@ -175,13 +179,19 @@ def drag_area_selection():
 
 def click_color_in_area(area):
     global selected_color, running, clicking, loop_delay
-    last_target = None
-    last_target_seen = 0
-    reacquire_grace_seconds = 2
-    root.after(0, lambda: status_label.config(text="Scanning search area for the selected color."))
+    tracked_targets = []
+    last_status = None
+
+    def update_status(message):
+        nonlocal last_status
+        if message != last_status:
+            last_status = message
+            root.after(0, lambda text=message: status_label.config(text=text))
+
+    update_status("Scanning continuously for the selected color.")
     while running:
         if not scan_full_screen and area is None:
-            root.after(0, lambda: status_label.config(text="Set a search area before starting."))
+            update_status("Set a search area before starting.")
             break
 
         if clicking and selected_color:
@@ -195,9 +205,9 @@ def click_color_in_area(area):
                 mask = cv2.inRange(screenshot_np, lower_bound, upper_bound)
                 component_count, _, stats, centroids = cv2.connectedComponentsWithStats(mask)
 
+                components = []
                 if component_count > 1:
                     cursor_x, cursor_y = pyautogui.position()
-                    components = []
                     for component in range(1, component_count):
                         if stats[component, cv2.CC_STAT_AREA] < 16:
                             continue
@@ -207,44 +217,47 @@ def click_color_in_area(area):
                         distance = (screen_x - cursor_x) ** 2 + (screen_y - cursor_y) ** 2
                         components.append((distance, screen_x, screen_y, stats[component, cv2.CC_STAT_AREA]))
 
-                    if components:
-                        _, click_x, click_y, _ = min(components, key=lambda match: match[0])
-                        last_target = (round(click_x), round(click_y))
-                        last_target_seen = time.monotonic()
-                        pyautogui.moveTo(*last_target, duration=0.05)
-                        pyautogui.click()
-                        root.after(0, lambda x=last_target[0], y=last_target[1]: status_label.config(
-                            text=f"Tracking color: clicked ({x}, {y}). Press Ctrl+S to stop."
-                        ))
-                    elif last_target and time.monotonic() - last_target_seen < reacquire_grace_seconds:
-                        pyautogui.click(*last_target)
-                        root.after(0, lambda: status_label.config(
-                            text="Color changed after click; retrying the last target while reacquiring."
-                        ))
+                matched_indices = set()
+                remaining_targets = []
+                for target in tracked_targets:
+                    nearby_index = next(
+                        (
+                            index for index, component in enumerate(components)
+                            if index not in matched_indices
+                            and (component[1] - target[0]) ** 2 + (component[2] - target[1]) ** 2 <= 35 ** 2
+                        ),
+                        None,
+                    )
+                    if nearby_index is not None:
+                        matched_indices.add(nearby_index)
+                        target[2] = 0
+                        remaining_targets.append(target)
                     else:
-                        root.after(0, lambda: status_label.config(
-                            text="Scanning screen: no usable matching color region found."
-                        ))
+                        target[2] += 1
+                        if target[2] < 3:
+                            remaining_targets.append(target)
+                tracked_targets = remaining_targets
+
+                new_components = [
+                    component for index, component in enumerate(components)
+                    if index not in matched_indices
+                ]
+                if new_components:
+                    _, click_x, click_y, _ = min(new_components, key=lambda match: match[0])
+                    target = (round(click_x), round(click_y))
+                    pyautogui.moveTo(*target, duration=0.05)
+                    pyautogui.click()
+                    tracked_targets.append([target[0], target[1], 0])
+                    update_status(f"Found and clicked a new color target at {target}; continuing to scan.")
+                elif components:
+                    update_status("Target remains visible; scanning for new matching targets.")
                 else:
-                    if last_target and time.monotonic() - last_target_seen < reacquire_grace_seconds:
-                        pyautogui.click(*last_target)
-                        root.after(0, lambda: status_label.config(
-                            text="Color changed after click; retrying the last target while reacquiring."
-                        ))
-                    else:
-                        last_target = None
-                        root.after(0, lambda: status_label.config(
-                            text="Scanning screen: no matching color found. Check the code and tolerance."
-                        ))
+                    update_status("Target not visible; continuously scanning until it appears.")
             except pyautogui.FailSafeException:
-                root.after(0, lambda: status_label.config(
-                    text="Safety pause: move the cursor away from the top-left corner to resume."
-                ))
+                update_status("Temporary cursor safety pause; continuing to scan.")
                 time.sleep(0.5)
             except (OSError, pyautogui.PyAutoGUIException, cv2.error) as error:
-                root.after(0, lambda message=str(error): status_label.config(
-                    text=f"Temporary scan error; retrying: {message}"
-                ))
+                update_status(f"Temporary scan error; retrying: {error}")
                 time.sleep(0.5)
 
         time.sleep(loop_delay)
