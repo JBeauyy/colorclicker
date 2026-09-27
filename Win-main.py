@@ -3,8 +3,10 @@ import cv2
 import numpy as np
 import time
 import threading
+import colorsys
 from pynput import keyboard, mouse
 import tkinter as tk
+from PIL import Image, ImageTk
 
 # Global variables
 selected_color = None
@@ -15,6 +17,51 @@ lock = threading.Lock()
 loop_delay = 0.1  # Default loop delay
 area = None
 start_x, start_y = None, None
+wheel_image = None
+
+
+def create_color_wheel(size=220):
+    """Create a hue/saturation wheel image for the color picker."""
+    image = Image.new("RGB", (size, size), "white")
+    center = size / 2
+    radius = center - 2
+    for y in range(size):
+        for x in range(size):
+            dx, dy = x - center, y - center
+            distance = (dx * dx + dy * dy) ** 0.5
+            if distance <= radius:
+                saturation = distance / radius
+                hue = (np.arctan2(-dy, dx) / (2 * np.pi)) % 1
+                image.putpixel((x, y), tuple(round(value * 255) for value in colorsys.hsv_to_rgb(hue, saturation, 1)))
+    return image
+
+
+def update_color_from_rgb(_=None):
+    rgb = (red_scale.get(), green_scale.get(), blue_scale.get())
+    rgb_label.config(text=f"RGB: {rgb}")
+    color_preview.config(bg="#%02x%02x%02x" % rgb)
+
+
+def use_picker_color():
+    global selected_color
+    selected_color = (red_scale.get(), green_scale.get(), blue_scale.get())
+    color_label.config(text=f"Selected Color: {selected_color}")
+    status_label.config(text="Color selected from picker. Set Search Area.")
+
+
+def choose_wheel_color(event):
+    center = 110
+    dx, dy = event.x - center, event.y - center
+    radius = (dx * dx + dy * dy) ** 0.5
+    if radius > center:
+        return
+    saturation = min(radius / center, 1)
+    hue = (np.arctan2(-dy, dx) / (2 * np.pi)) % 1
+    rgb = tuple(round(value * 255) for value in colorsys.hsv_to_rgb(hue, saturation, 1))
+    red_scale.set(rgb[0])
+    green_scale.set(rgb[1])
+    blue_scale.set(rgb[2])
+    update_color_from_rgb()
 
 def get_color_from_keypress():
     """Capture the color from the screen at the current mouse position."""
@@ -149,6 +196,28 @@ color_button.pack(pady=5)
 
 color_label = tk.Label(root, text="Selected Color: None")
 color_label.pack(pady=5)
+
+picker_frame = tk.LabelFrame(root, text="Choose RGB Color", padx=8, pady=8)
+picker_frame.pack(pady=5)
+
+wheel_image = ImageTk.PhotoImage(create_color_wheel())
+wheel_canvas = tk.Canvas(picker_frame, width=220, height=220, highlightthickness=0)
+wheel_canvas.create_image(0, 0, image=wheel_image, anchor="nw")
+wheel_canvas.bind("<Button-1>", choose_wheel_color)
+wheel_canvas.grid(row=0, column=0, rowspan=4, padx=(0, 10))
+
+red_scale = tk.Scale(picker_frame, from_=255, to=0, orient="horizontal", label="Red", command=update_color_from_rgb)
+green_scale = tk.Scale(picker_frame, from_=255, to=0, orient="horizontal", label="Green", command=update_color_from_rgb)
+blue_scale = tk.Scale(picker_frame, from_=255, to=0, orient="horizontal", label="Blue", command=update_color_from_rgb)
+for row, scale in enumerate((red_scale, green_scale, blue_scale)):
+    scale.grid(row=row, column=1, sticky="ew")
+rgb_label = tk.Label(picker_frame, text="RGB: (255, 0, 0)")
+rgb_label.grid(row=3, column=1)
+color_preview = tk.Label(picker_frame, text="      ", bg="#ff0000", relief="sunken")
+color_preview.grid(row=4, column=1, pady=4)
+red_scale.set(255)
+picker_button = tk.Button(picker_frame, text="Use Selected Color", command=use_picker_color)
+picker_button.grid(row=5, column=0, columnspan=2, pady=(4, 0))
 
 area_button = tk.Button(root, text="Set Search Area", command=set_search_area)
 area_button.pack(pady=5)

@@ -5,7 +5,7 @@
 This bot is designed to automatically click on a specified color within a defined area on the screen, streamlining repetitive actions where color-based targeting is essential. With a simple GUI for selecting colors, setting search areas, and adjusting click delay, users can easily configure the bot to suit various tasks.
 
 ### Features
-- **Color Selection**: Choose any pixel color by hovering and pressing the "Set Color" button.
+- **Color Selection**: Choose a color from the built-in RGB/HSV wheel and sliders, or sample any pixel by hovering and pressing the "Set Color" button.
 - **Area Selection**: Drag to create a search area, focusing the bot’s actions on a specific screen region.
 - **Auto-Clicking**: Automatically clicks on the first instance of the selected color detected within the area.
 - **Loop Delay Adjustment**: Customize the interval between clicks for optimal performance.
@@ -42,7 +42,7 @@ On Linux, grant the terminal accessibility/input permissions requested by your d
 ## Use it with a browser game
 
 1. Open the game and keep the game window visible; do not minimize it.
-2. Move the pointer over the target game element and click **Set Color**. The current pointer position is sampled.
+2. Select the target color from the RGB wheel, adjust the Red/Green/Blue sliders if needed, and click **Use Selected Color**. You can alternatively move the pointer over the target and click **Set Color** to sample it.
 3. Click **Set Search Area**, then drag a rectangle around the part of the game where that color can appear.
 4. Press **Ctrl+Space** or click **Toggle Clicking** until clicking is **ON**.
 5. Press **Ctrl+S** to start or stop scanning. Adjust **Loop Delay** if the game needs slower input.
