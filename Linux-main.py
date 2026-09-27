@@ -179,7 +179,6 @@ def drag_area_selection():
 
 def click_color_in_area(area):
     global selected_color, running, clicking, loop_delay
-    tracked_targets = []
     last_status = None
 
     def update_status(message):
@@ -217,40 +216,12 @@ def click_color_in_area(area):
                         distance = (screen_x - cursor_x) ** 2 + (screen_y - cursor_y) ** 2
                         components.append((distance, screen_x, screen_y, stats[component, cv2.CC_STAT_AREA]))
 
-                matched_indices = set()
-                remaining_targets = []
-                for target in tracked_targets:
-                    nearby_index = next(
-                        (
-                            index for index, component in enumerate(components)
-                            if index not in matched_indices
-                            and (component[1] - target[0]) ** 2 + (component[2] - target[1]) ** 2 <= 35 ** 2
-                        ),
-                        None,
-                    )
-                    if nearby_index is not None:
-                        matched_indices.add(nearby_index)
-                        target[2] = 0
-                        remaining_targets.append(target)
-                    else:
-                        target[2] += 1
-                        if target[2] < 3:
-                            remaining_targets.append(target)
-                tracked_targets = remaining_targets
-
-                new_components = [
-                    component for index, component in enumerate(components)
-                    if index not in matched_indices
-                ]
-                if new_components:
-                    _, click_x, click_y, _ = min(new_components, key=lambda match: match[0])
+                if components:
+                    _, click_x, click_y, _ = min(components, key=lambda match: match[0])
                     target = (round(click_x), round(click_y))
                     pyautogui.moveTo(*target, duration=0.05)
                     pyautogui.click()
-                    tracked_targets.append([target[0], target[1], 0])
-                    update_status(f"Found and clicked a new color target at {target}; continuing to scan.")
-                elif components:
-                    update_status("Target remains visible; scanning for new matching targets.")
+                    update_status("Color found; clicking continuously and scanning for more matches.")
                 else:
                     update_status("Target not visible; continuously scanning until it appears.")
             except pyautogui.FailSafeException:
