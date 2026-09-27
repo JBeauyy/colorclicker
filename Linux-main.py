@@ -4,6 +4,7 @@ import numpy as np
 import time
 import threading
 import colorsys
+import re
 from pynput import keyboard, mouse
 import tkinter as tk
 from PIL import Image, ImageTk
@@ -18,6 +19,7 @@ loop_delay = 0.1  # Default loop delay
 area = None
 start_x, start_y = None, None
 wheel_image = None
+dropper_listener = None
 
 
 def create_color_wheel(size=220):
@@ -40,6 +42,39 @@ def update_color_from_rgb(_=None):
     rgb = (red_scale.get(), green_scale.get(), blue_scale.get())
     rgb_label.config(text=f"RGB: {rgb}")
     color_preview.config(bg="#%02x%02x%02x" % rgb)
+    color_code_var.set("#%02X%02X%02X" % rgb)
+
+
+def parse_color_code(value):
+    value = value.strip()
+    if re.fullmatch(r"#?[0-9a-fA-F]{6}", value):
+        value = value.removeprefix("#")
+        return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
+    channels = value.split(",")
+    if len(channels) == 3:
+        try:
+            rgb = tuple(int(channel.strip()) for channel in channels)
+        except ValueError:
+            pass
+        else:
+            if all(0 <= channel <= 255 for channel in rgb):
+                return rgb
+
+    raise ValueError("Enter #RRGGBB or three RGB values from 0 to 255.")
+
+
+def apply_color_code():
+    try:
+        rgb = parse_color_code(color_code_var.get())
+    except ValueError as error:
+        status_label.config(text=str(error))
+        return
+
+    red_scale.set(rgb[0])
+    green_scale.set(rgb[1])
+    blue_scale.set(rgb[2])
+    use_picker_color()
 
 
 def use_picker_color():
@@ -64,14 +99,39 @@ def choose_wheel_color(event):
     update_color_from_rgb()
 
 def get_color_from_keypress():
-    global selected_color
-    status_label.config(text="Waiting for Color Selection... Hover and press 'Set Color' button.")
-    
-    # Wait for user to hover and press the button
-    x, y = pyautogui.position()
-    selected_color = pyautogui.screenshot().getpixel((x, y))
-    color_label.config(text=f"Selected Color: {selected_color}")
-    status_label.config(text="Color Selected! Set Search Area.")
+    """Arm a one-shot global click to sample a screen pixel."""
+    global dropper_listener
+    if dropper_listener is not None and dropper_listener.is_alive():
+        root.after(0, lambda: status_label.config(text="Screen color picker is already armed."))
+        return
+
+    root.after(0, lambda: status_label.config(text="Switch to the browser and click the exact pixel to sample."))
+
+    def on_click(x, y, button, pressed):
+        global selected_color
+        if not pressed or button != mouse.Button.left:
+            return
+
+        try:
+            sampled_color = pyautogui.screenshot().getpixel((x, y))
+        except (IndexError, OSError, pyautogui.PyAutoGUIException) as error:
+            root.after(0, lambda message=str(error): status_label.config(text=f"Color sampling failed: {message}"))
+            return False
+
+        def apply_sample():
+            global selected_color
+            selected_color = sampled_color
+            red_scale.set(sampled_color[0])
+            green_scale.set(sampled_color[1])
+            blue_scale.set(sampled_color[2])
+            color_label.config(text=f"Selected Color: {selected_color}")
+            status_label.config(text="Screen color selected. Set Search Area.")
+
+        root.after(0, apply_sample)
+        return False
+
+    dropper_listener = mouse.Listener(on_click=on_click, suppress=True)
+    dropper_listener.start()
     
 def drag_area_selection():
     """Display a visual selection square and capture the selected area."""
@@ -183,12 +243,12 @@ def set_search_area():
 
 # Set up GUI
 root = tk.Tk()
-root.title("Clicking Bot Configuration")
+root.title("Color Clicker")
 
-status_label = tk.Label(root, text="Press 'Set Color' and hover over your desired color.")
+status_label = tk.Label(root, text="Choose a color code, use the wheel, or pick a pixel from the screen.")
 status_label.pack(pady=5)
 
-color_button = tk.Button(root, text="Set Color", command=select_color)
+color_button = tk.Button(root, text="Pick Color From Screen (F)", command=select_color)
 color_button.pack(pady=5)
 
 color_label = tk.Label(root, text="Selected Color: None")
@@ -212,9 +272,15 @@ rgb_label = tk.Label(picker_frame, text="RGB: (255, 0, 0)")
 rgb_label.grid(row=3, column=1)
 color_preview = tk.Label(picker_frame, text="      ", bg="#ff0000", relief="sunken")
 color_preview.grid(row=4, column=1, pady=4)
+color_code_var = tk.StringVar(value="#FF0000")
 red_scale.set(255)
+tk.Label(picker_frame, text="Color code (#RRGGBB or R, G, B)").grid(row=6, column=0, sticky="w")
+color_code_entry = tk.Entry(picker_frame, textvariable=color_code_var, width=18)
+color_code_entry.grid(row=6, column=1, sticky="ew")
+apply_code_button = tk.Button(picker_frame, text="Apply Code", command=apply_color_code)
+apply_code_button.grid(row=7, column=0, columnspan=2, pady=(4, 0))
 picker_button = tk.Button(picker_frame, text="Use Selected Color", command=use_picker_color)
-picker_button.grid(row=5, column=0, columnspan=2, pady=(4, 0))
+picker_button.grid(row=8, column=0, columnspan=2, pady=(4, 0))
 
 area_button = tk.Button(root, text="Set Search Area", command=set_search_area)
 area_button.pack(pady=5)
