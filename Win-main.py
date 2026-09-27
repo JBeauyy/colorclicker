@@ -18,9 +18,11 @@ lock = threading.Lock()
 loop_delay = 0.1  # Default loop delay
 match_tolerance = 20
 area = None
+scan_full_screen = True
 start_x, start_y = None, None
 wheel_image = None
 dropper_listener = None
+scanner_thread = None
 
 
 def create_color_wheel(size=220):
@@ -175,13 +177,14 @@ def click_color_in_area(area):
     global selected_color, running, clicking, loop_delay
     root.after(0, lambda: status_label.config(text="Scanning search area for the selected color."))
     while running:
-        if area is None:
+        if not scan_full_screen and area is None:
             root.after(0, lambda: status_label.config(text="Set a search area before starting."))
             break
 
         if clicking and selected_color:
             try:
-                screenshot = pyautogui.screenshot(region=area)
+                search_area = None if scan_full_screen else area
+                screenshot = pyautogui.screenshot(region=search_area)
                 screenshot_np = np.array(screenshot)
                 target_color = np.array(selected_color, dtype=np.int16)
                 lower_bound = np.clip(target_color - match_tolerance, 0, 255).astype(np.uint8)
@@ -193,47 +196,54 @@ def click_color_in_area(area):
                     cursor_x, cursor_y = pyautogui.position()
                     components = []
                     for component in range(1, component_count):
+                        if stats[component, cv2.CC_STAT_AREA] < 16:
+                            continue
                         x, y = centroids[component]
-                        screen_x = area[0] + x
-                        screen_y = area[1] + y
+                        screen_x = (search_area[0] if search_area else 0) + x
+                        screen_y = (search_area[1] if search_area else 0) + y
                         distance = (screen_x - cursor_x) ** 2 + (screen_y - cursor_y) ** 2
                         components.append((distance, screen_x, screen_y, stats[component, cv2.CC_STAT_AREA]))
 
-                    _, click_x, click_y, _ = min(components, key=lambda match: match[0])
-                    pyautogui.click(round(click_x), round(click_y))
-                    root.after(0, lambda x=round(click_x), y=round(click_y): status_label.config(
-                        text=f"Found color and clicked at ({x}, {y}). Scanning..."
-                    ))
+                    if components:
+                        _, click_x, click_y, _ = min(components, key=lambda match: match[0])
+                        pyautogui.moveTo(round(click_x), round(click_y), duration=0.05)
+                        pyautogui.click()
+                        root.after(0, lambda x=round(click_x), y=round(click_y): status_label.config(
+                            text=f"Tracking color: clicked ({x}, {y}). Press Ctrl+S to stop."
+                        ))
+                    else:
+                        root.after(0, lambda: status_label.config(
+                            text="Scanning screen: no usable matching color region found."
+                        ))
                 else:
                     root.after(0, lambda: status_label.config(
-                        text="Scanning: no matching color found. Check the code, area, and tolerance."
+                        text="Scanning screen: no matching color found. Check the code and tolerance."
                     ))
             except (OSError, pyautogui.PyAutoGUIException, cv2.error) as error:
                 running = False
                 clicking = False
                 root.after(0, lambda message=str(error): status_label.config(text=f"Scan stopped: {message}"))
                 root.after(0, lambda: toggle_label.config(text="Clicking: OFF"))
+                root.after(0, root.deiconify)
                 break
 
         time.sleep(loop_delay)
 
     running = False
+    clicking = False
+    root.after(0, lambda: toggle_label.config(text="Clicking: OFF"))
     root.after(0, lambda: start_button.config(text="Start Scanning"))
 
 
 def toggle_running():
     """Toggle the script running state on or off."""
-    global running, clicking
-    if not running and (selected_color is None or area is None or area[2] <= 0 or area[3] <= 0):
-        status_label.config(text="Set a color and a non-empty search area first.")
-        return
-
+    global running, clicking, scanner_thread
     if not selected_color:
         status_label.config(text="Select a color before starting the bot.")
         return
 
-    if area is None:
-        status_label.config(text="Select a search area before starting the bot.")
+    if not scan_full_screen and (area is None or area[2] <= 0 or area[3] <= 0):
+        status_label.config(text="Draw a search area or enable Full Screen Scan.")
         return
 
     if running:
@@ -242,14 +252,26 @@ def toggle_running():
         toggle_label.config(text="Clicking: OFF")
         status_label.config(text="Script Stopped. Press 'Ctrl+S' to start.")
         start_button.config(text="Start Scanning")
+        root.deiconify()
+        root.lift()
+        return
+
+    if scanner_thread is not None and scanner_thread.is_alive():
+        status_label.config(text="The previous scan is stopping; try again in a moment.")
         return
 
     running = True
     clicking = True
     toggle_label.config(text="Clicking: ON")
     start_button.config(text="Stop Scanning")
-    status_label.config(text="Scanning search area; the cursor will move to matching colors.")
-    threading.Thread(target=click_color_in_area, args=(area,), daemon=True).start()
+    status_label.config(text="Starting scan. The app will minimize so the browser is visible.")
+    root.iconify()
+    def start_scanner():
+        global scanner_thread
+        if running:
+            scanner_thread = threading.Thread(target=click_color_in_area, args=(area,), daemon=True)
+            scanner_thread.start()
+    root.after(700, start_scanner)
 
 
 def toggle_clicking():
@@ -275,7 +297,14 @@ def select_color():
 
 def set_search_area():
     """Begin area selection."""
+    global scan_full_screen
+    scan_full_screen = False
+    full_screen_var.set(False)
     drag_area_selection()
+
+def set_full_screen_scan():
+    global scan_full_screen
+    scan_full_screen = full_screen_var.get()
 
 # GUI setup
 root = tk.Tk()
@@ -321,6 +350,12 @@ picker_button.grid(row=8, column=0, columnspan=2, pady=(4, 0))
 area_button = tk.Button(root, text="Set Search Area", command=set_search_area)
 area_button.pack(pady=5)
 
+full_screen_var = tk.BooleanVar(value=True)
+full_screen_check = tk.Checkbutton(
+    root, text="Full Screen Scan (recommended)", variable=full_screen_var, command=set_full_screen_scan
+)
+full_screen_check.pack(pady=5)
+
 area_label = tk.Label(root, text="Search Area: Not set")
 area_label.pack(pady=5)
 
@@ -361,11 +396,11 @@ def on_press(key):
 
         ctrl_pressed = keyboard.Key.ctrl_l in pressed_keys or keyboard.Key.ctrl_r in pressed_keys
         if char == 'f':
-            select_color()
+            root.after(0, select_color)
         elif char == 's' and ctrl_pressed:
-            toggle_running()
+            root.after(0, toggle_running)
         elif key == keyboard.Key.space and ctrl_pressed:
-            toggle_clicking()
+            root.after(0, toggle_clicking)
 
 def on_release(key):
     with lock:

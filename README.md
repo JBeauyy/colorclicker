@@ -50,7 +50,7 @@ On Linux, grant the terminal accessibility/input permissions requested by your d
 
 1. Open the game and keep the game window visible; do not minimize it.
 2. Choose a color from the RGB wheel or enter an exact `#RRGGBB` / `R, G, B` code and click **Apply Code**. To sample the browser directly, click **Pick Color From Screen** (or press `F`), switch to the browser with `Alt+Tab`, then click the exact pixel. The sampling click is intercepted so it won't activate the game element.
-3. Click **Set Search Area**, then drag a rectangle around the part of the game where that color can appear.
-4. Draw the search area tightly around the button or buttons, sampling their solid background rather than the text. Click **Start Scanning** in the app; the cursor moves to and clicks the nearest matching color region. The app reports whether it found a match. Press **Ctrl+Space** to pause or resume clicking, and **Ctrl+S** (or **Stop Scanning**) to stop. Adjust **Color Tolerance** if button shading or anti-aliasing prevents a match, and adjust **Loop Delay** to control click speed.
+3. Leave **Full Screen Scan** enabled to find the color anywhere on the visible desktop, or optionally draw a search area to restrict where it looks.
+4. Click **Start Scanning**. The app minimizes to reveal the browser, continuously finds the matching color region nearest the cursor, moves the cursor there, and clicks repeatedly while the color remains visible. Press **Ctrl+S** to stop and restore the app, or **Ctrl+Space** to pause/resume clicks. Adjust **Color Tolerance** if button shading or anti-aliasing prevents a match, and adjust **Loop Delay** to control click speed.
 
-The bot clicks the first matching pixel in the selected area. Use it only with games and services where automation is allowed.
+The bot searches the whole screen by default, so keep the browser visible and choose a color that identifies the intended target. Use it only with games and services where automation is allowed.
