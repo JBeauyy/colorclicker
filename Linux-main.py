@@ -19,7 +19,7 @@ running = False
 clicking = False
 pressed_keys = set()
 lock = threading.Lock()
-loop_delay = 0.1  # Default loop delay
+loop_delay = 0.15  # Default loop delay gives browser UI time to update between scans
 match_tolerance = 20
 area = None
 scan_full_screen = True
@@ -249,6 +249,7 @@ def click_color_in_area(area):
                             key=lambda position: (position[0] - cursor_x) ** 2 + (position[1] - cursor_y) ** 2,
                         )
                         pyautogui.moveTo(exit_x, exit_y, duration=0.05)
+                    time.sleep(0.15)
                     update_status("Color found; clicking continuously and scanning for more matches.")
                 else:
                     update_status("Target not visible; continuously scanning until it appears.")
@@ -399,7 +400,7 @@ toggle_label.pack(pady=5)
 start_button = tk.Button(root, text="Start Scanning", command=toggle_running)
 start_button.pack(pady=5)
 
-delay_scale = tk.Scale(root, from_=0.05, to=1.0, resolution=0.05, orient="horizontal", label="Loop Delay (seconds)", command=update_loop_delay)
+delay_scale = tk.Scale(root, from_=0.1, to=1.0, resolution=0.05, orient="horizontal", label="Loop Delay (seconds)", command=update_loop_delay)
 delay_scale.set(loop_delay)
 delay_scale.pack(pady=5)
 
