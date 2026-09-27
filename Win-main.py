@@ -220,7 +220,7 @@ def drag_area_selection():
 def click_color_in_area(area):
     """Click on the selected color within the defined area while the bot is running."""
     global selected_color, running, clicking, loop_delay
-    no_click_rescan_seconds = 5
+    no_click_rescan_seconds = 1
     last_click = time.monotonic()
     last_idle_rescan = last_click
     force_full_scan_until = 0
@@ -246,7 +246,7 @@ def click_color_in_area(area):
                     pyautogui.moveTo(5, 5, duration=0.1)
                     last_idle_rescan = now
                     force_full_scan_until = now + 2
-                    update_status("No click for 5 seconds; moving off the target and rescanning the full screen.")
+                    update_status("No click for 1 second; moving off the target and rescanning the full screen.")
 
                 search_area = None if scan_full_screen or now < force_full_scan_until else area
                 screenshot = pyautogui.screenshot(region=search_area)
