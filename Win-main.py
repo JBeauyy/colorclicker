@@ -175,6 +175,9 @@ def drag_area_selection():
 def click_color_in_area(area):
     """Click on the selected color within the defined area while the bot is running."""
     global selected_color, running, clicking, loop_delay
+    last_target = None
+    last_target_seen = 0
+    reacquire_grace_seconds = 2
     root.after(0, lambda: status_label.config(text="Scanning search area for the selected color."))
     while running:
         if not scan_full_screen and area is None:
@@ -206,26 +209,43 @@ def click_color_in_area(area):
 
                     if components:
                         _, click_x, click_y, _ = min(components, key=lambda match: match[0])
-                        pyautogui.moveTo(round(click_x), round(click_y), duration=0.05)
+                        last_target = (round(click_x), round(click_y))
+                        last_target_seen = time.monotonic()
+                        pyautogui.moveTo(*last_target, duration=0.05)
                         pyautogui.click()
-                        root.after(0, lambda x=round(click_x), y=round(click_y): status_label.config(
+                        root.after(0, lambda x=last_target[0], y=last_target[1]: status_label.config(
                             text=f"Tracking color: clicked ({x}, {y}). Press Ctrl+S to stop."
+                        ))
+                    elif last_target and time.monotonic() - last_target_seen < reacquire_grace_seconds:
+                        pyautogui.click(*last_target)
+                        root.after(0, lambda: status_label.config(
+                            text="Color changed after click; retrying the last target while reacquiring."
                         ))
                     else:
                         root.after(0, lambda: status_label.config(
                             text="Scanning screen: no usable matching color region found."
                         ))
                 else:
-                    root.after(0, lambda: status_label.config(
-                        text="Scanning screen: no matching color found. Check the code and tolerance."
-                    ))
+                    if last_target and time.monotonic() - last_target_seen < reacquire_grace_seconds:
+                        pyautogui.click(*last_target)
+                        root.after(0, lambda: status_label.config(
+                            text="Color changed after click; retrying the last target while reacquiring."
+                        ))
+                    else:
+                        last_target = None
+                        root.after(0, lambda: status_label.config(
+                            text="Scanning screen: no matching color found. Check the code and tolerance."
+                        ))
+            except pyautogui.FailSafeException:
+                root.after(0, lambda: status_label.config(
+                    text="Safety pause: move the cursor away from the top-left corner to resume."
+                ))
+                time.sleep(0.5)
             except (OSError, pyautogui.PyAutoGUIException, cv2.error) as error:
-                running = False
-                clicking = False
-                root.after(0, lambda message=str(error): status_label.config(text=f"Scan stopped: {message}"))
-                root.after(0, lambda: toggle_label.config(text="Clicking: OFF"))
-                root.after(0, root.deiconify)
-                break
+                root.after(0, lambda message=str(error): status_label.config(
+                    text=f"Temporary scan error; retrying: {message}"
+                ))
+                time.sleep(0.5)
 
         time.sleep(loop_delay)
 
