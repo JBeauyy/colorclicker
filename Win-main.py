@@ -214,13 +214,41 @@ def click_color_in_area(area):
                         screen_x = (search_area[0] if search_area else 0) + x
                         screen_y = (search_area[1] if search_area else 0) + y
                         distance = (screen_x - cursor_x) ** 2 + (screen_y - cursor_y) ** 2
-                        components.append((distance, screen_x, screen_y, stats[component, cv2.CC_STAT_AREA]))
+                        bounds = (
+                            (search_area[0] if search_area else 0) + stats[component, cv2.CC_STAT_LEFT],
+                            (search_area[1] if search_area else 0) + stats[component, cv2.CC_STAT_TOP],
+                            stats[component, cv2.CC_STAT_WIDTH],
+                            stats[component, cv2.CC_STAT_HEIGHT],
+                        )
+                        components.append((distance, screen_x, screen_y, stats[component, cv2.CC_STAT_AREA], bounds))
 
                 if components:
-                    _, click_x, click_y, _ = min(components, key=lambda match: match[0])
+                    _, click_x, click_y, _, bounds = min(components, key=lambda match: match[0])
                     target = (round(click_x), round(click_y))
                     pyautogui.moveTo(*target, duration=0.05)
                     pyautogui.click()
+                    left, top, width, height = bounds
+                    screen_width, screen_height = pyautogui.size()
+                    center_x = left + width // 2
+                    center_y = top + height // 2
+                    exit_positions = [
+                        (center_x, top - 24),
+                        (center_x, top + height + 24),
+                        (left - 24, center_y),
+                        (left + width + 24, center_y),
+                    ]
+                    safe_positions = [
+                        (x, y) for x, y in exit_positions
+                        if 0 <= x < screen_width and 0 <= y < screen_height
+                        and not (left <= x < left + width and top <= y < top + height)
+                    ]
+                    if safe_positions:
+                        cursor_x, cursor_y = pyautogui.position()
+                        exit_x, exit_y = min(
+                            safe_positions,
+                            key=lambda position: (position[0] - cursor_x) ** 2 + (position[1] - cursor_y) ** 2,
+                        )
+                        pyautogui.moveTo(exit_x, exit_y, duration=0.05)
                     update_status("Color found; clicking continuously and scanning for more matches.")
                 else:
                     update_status("Target not visible; continuously scanning until it appears.")
@@ -229,6 +257,10 @@ def click_color_in_area(area):
                 time.sleep(0.5)
             except (OSError, pyautogui.PyAutoGUIException, cv2.error) as error:
                 update_status(f"Temporary scan error; retrying: {error}")
+                time.sleep(0.5)
+            except Exception as error:
+                update_status(f"Unexpected scan error; retrying: {type(error).__name__}: {error}")
+                print(f"Unexpected scan error; retrying: {type(error).__name__}: {error}")
                 time.sleep(0.5)
 
         time.sleep(loop_delay)
