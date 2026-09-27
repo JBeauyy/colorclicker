@@ -173,33 +173,52 @@ def drag_area_selection():
 
 def click_color_in_area(area):
     global selected_color, running, clicking, loop_delay
-    status_label.config(text="Clicking Started!")
+    root.after(0, lambda: status_label.config(text="Scanning search area for the selected color."))
     while running:
         if area is None:
-            status_label.config(text="Set a search area before starting.")
+            root.after(0, lambda: status_label.config(text="Set a search area before starting."))
             break
 
         if clicking and selected_color:
-            screenshot = pyautogui.screenshot(region=area)
-            screenshot_np = np.array(screenshot)
+            try:
+                screenshot = pyautogui.screenshot(region=area)
+                screenshot_np = np.array(screenshot)
+                target_color = np.array(selected_color, dtype=np.int16)
+                lower_bound = np.clip(target_color - match_tolerance, 0, 255).astype(np.uint8)
+                upper_bound = np.clip(target_color + match_tolerance, 0, 255).astype(np.uint8)
+                mask = cv2.inRange(screenshot_np, lower_bound, upper_bound)
+                component_count, _, stats, centroids = cv2.connectedComponentsWithStats(mask)
 
-            target_color = np.array(selected_color, dtype=np.int16)
-            lower_bound = np.clip(target_color - match_tolerance, 0, 255).astype(np.uint8)
-            upper_bound = np.clip(target_color + match_tolerance, 0, 255).astype(np.uint8)
-            mask = cv2.inRange(screenshot_np, lower_bound, upper_bound)
-            coords = np.column_stack(np.where(mask > 0))
+                if component_count > 1:
+                    cursor_x, cursor_y = pyautogui.position()
+                    components = []
+                    for component in range(1, component_count):
+                        x, y = centroids[component]
+                        screen_x = area[0] + x
+                        screen_y = area[1] + y
+                        distance = (screen_x - cursor_x) ** 2 + (screen_y - cursor_y) ** 2
+                        components.append((distance, screen_x, screen_y, stats[component, cv2.CC_STAT_AREA]))
 
-            if len(coords) > 0:
-                y, x = coords[0]
-                click_x = area[0] + x
-                click_y = area[1] + y
-                pyautogui.click(click_x, click_y)
-                print(f"Clicked on color at: ({click_x}, {click_y})")
+                    _, click_x, click_y, _ = min(components, key=lambda match: match[0])
+                    pyautogui.click(round(click_x), round(click_y))
+                    root.after(0, lambda x=round(click_x), y=round(click_y): status_label.config(
+                        text=f"Found color and clicked at ({x}, {y}). Scanning..."
+                    ))
+                else:
+                    root.after(0, lambda: status_label.config(
+                        text="Scanning: no matching color found. Check the code, area, and tolerance."
+                    ))
+            except (OSError, pyautogui.PyAutoGUIException, cv2.error) as error:
+                running = False
+                clicking = False
+                root.after(0, lambda message=str(error): status_label.config(text=f"Scan stopped: {message}"))
+                root.after(0, lambda: toggle_label.config(text="Clicking: OFF"))
+                break
 
         time.sleep(loop_delay)
 
     running = False
-    status_label.config(text="Script Stopped. Press 'Ctrl+S' to start.")
+    root.after(0, lambda: start_button.config(text="Start Scanning"))
 
 
 def toggle_running():
@@ -222,11 +241,13 @@ def toggle_running():
         clicking = False
         toggle_label.config(text="Clicking: OFF")
         status_label.config(text="Script Stopped. Press 'Ctrl+S' to start.")
+        start_button.config(text="Start Scanning")
         return
 
     running = True
     clicking = True
     toggle_label.config(text="Clicking: ON")
+    start_button.config(text="Stop Scanning")
     status_label.config(text="Script Running. Press 'Ctrl+S' to stop.")
     threading.Thread(target=click_color_in_area, args=(area,), daemon=True).start()
     
@@ -303,6 +324,9 @@ toggle_button.pack(pady=5)
 
 toggle_label = tk.Label(root, text="Clicking: OFF")
 toggle_label.pack(pady=5)
+
+start_button = tk.Button(root, text="Start Scanning", command=toggle_running)
+start_button.pack(pady=5)
 
 delay_scale = tk.Scale(root, from_=0.05, to=1.0, resolution=0.05, orient="horizontal", label="Loop Delay (seconds)", command=update_loop_delay)
 delay_scale.set(loop_delay)
