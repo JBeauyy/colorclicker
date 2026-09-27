@@ -8,7 +8,7 @@ This bot is designed to automatically click on a specified color within a define
 - **Color Selection**: Choose a color from the built-in RGB/HSV wheel and sliders, enter an exact color code, or use the screen dropper to sample a browser pixel.
 - **Area Selection**: Drag to create a search area, focusing the bot’s actions on a specific screen region.
 - **Auto-Clicking**: Automatically clicks on the first instance of the selected color detected within the area.
-- **Loop Delay Adjustment**: Customize the interval between clicks for optimal performance.
+- **Loop Delay and Color Tolerance**: Customize the interval between clicks and how closely screen pixels must match the selected color.
 - **Hotkey Controls**: Start/stop the bot with `Ctrl+S`, toggle clicking with `Ctrl+Space`, and select color with `F`.
 
 Built with PyAutoGUI, OpenCV, and Tkinter, this program is ideal for automating interactions in environments where specific color elements require consistent attention.
@@ -51,7 +51,6 @@ On Linux, grant the terminal accessibility/input permissions requested by your d
 1. Open the game and keep the game window visible; do not minimize it.
 2. Choose a color from the RGB wheel or enter an exact `#RRGGBB` / `R, G, B` code and click **Apply Code**. To sample the browser directly, click **Pick Color From Screen** (or press `F`), switch to the browser with `Alt+Tab`, then click the exact pixel. The sampling click is intercepted so it won't activate the game element.
 3. Click **Set Search Area**, then drag a rectangle around the part of the game where that color can appear.
-4. Press **Ctrl+Space** or click **Toggle Clicking** until clicking is **ON**.
-5. Press **Ctrl+S** to start or stop scanning. Adjust **Loop Delay** if the game needs slower input.
+4. Press **Ctrl+S** to start scanning; this also enables clicking. Press **Ctrl+Space** to pause or resume clicking while the scan runs. Adjust **Color Tolerance** if button shading or anti-aliasing prevents a match, and adjust **Loop Delay** to control click speed.
 
 The bot clicks the first matching pixel in the selected area. Use it only with games and services where automation is allowed.

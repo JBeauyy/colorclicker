@@ -16,6 +16,7 @@ clicking = False
 pressed_keys = set()
 lock = threading.Lock()
 loop_delay = 0.1  # Default loop delay
+match_tolerance = 20
 area = None
 start_x, start_y = None, None
 wheel_image = None
@@ -183,8 +184,8 @@ def click_color_in_area(area):
             screenshot_np = np.array(screenshot)
 
             target_color = np.array(selected_color, dtype=np.int16)
-            lower_bound = np.clip(target_color - 20, 0, 255).astype(np.uint8)
-            upper_bound = np.clip(target_color + 20, 0, 255).astype(np.uint8)
+            lower_bound = np.clip(target_color - match_tolerance, 0, 255).astype(np.uint8)
+            upper_bound = np.clip(target_color + match_tolerance, 0, 255).astype(np.uint8)
             mask = cv2.inRange(screenshot_np, lower_bound, upper_bound)
             coords = np.column_stack(np.where(mask > 0))
 
@@ -202,7 +203,7 @@ def click_color_in_area(area):
 
 
 def toggle_running():
-    global running
+    global running, clicking
 
     if not running and (selected_color is None or area is None or area[2] <= 0 or area[3] <= 0):
         status_label.config(text="Set a color and a non-empty search area first.")
@@ -218,10 +219,14 @@ def toggle_running():
 
     if running:
         running = False
+        clicking = False
+        toggle_label.config(text="Clicking: OFF")
         status_label.config(text="Script Stopped. Press 'Ctrl+S' to start.")
         return
 
     running = True
+    clicking = True
+    toggle_label.config(text="Clicking: ON")
     status_label.config(text="Script Running. Press 'Ctrl+S' to stop.")
     threading.Thread(target=click_color_in_area, args=(area,), daemon=True).start()
     
@@ -234,6 +239,11 @@ def update_loop_delay(val):
     global loop_delay
     loop_delay = float(val)
     delay_label.config(text=f"Loop Delay: {loop_delay:.2f}s")
+
+def update_match_tolerance(val):
+    global match_tolerance
+    match_tolerance = int(float(val))
+    tolerance_label.config(text=f"Color Tolerance: +/-{match_tolerance}")
 
 def select_color():
     threading.Thread(target=get_color_from_keypress).start()
@@ -288,7 +298,7 @@ area_button.pack(pady=5)
 area_label = tk.Label(root, text="Search Area: Not set")
 area_label.pack(pady=5)
 
-toggle_button = tk.Button(root, text="Toggle Clicking (Ctrl + Space)", command=toggle_clicking)
+toggle_button = tk.Button(root, text="Pause/Resume Clicking (Ctrl + Space)", command=toggle_clicking)
 toggle_button.pack(pady=5)
 
 toggle_label = tk.Label(root, text="Clicking: OFF")
@@ -300,6 +310,13 @@ delay_scale.pack(pady=5)
 
 delay_label = tk.Label(root, text=f"Loop Delay: {loop_delay:.2f}s")
 delay_label.pack(pady=5)
+
+tolerance_label = tk.Label(root, text=f"Color Tolerance: +/-{match_tolerance}")
+tolerance_label.pack(pady=5)
+
+tolerance_scale = tk.Scale(root, from_=0, to=100, resolution=1, orient="horizontal", label="Color Tolerance", command=update_match_tolerance)
+tolerance_scale.set(match_tolerance)
+tolerance_scale.pack(pady=5)
 
 # Keyboard listener setup
 def on_press(key):
