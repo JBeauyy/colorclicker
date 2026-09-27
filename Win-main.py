@@ -191,7 +191,8 @@ def click_color_in_area(area):
     while running:
         if not scan_full_screen and area is None:
             update_status("Set a search area before starting.")
-            break
+            time.sleep(0.5)
+            continue
 
         if clicking and selected_color:
             try:
@@ -266,10 +267,27 @@ def click_color_in_area(area):
 
         time.sleep(loop_delay)
 
-    running = False
-    clicking = False
-    root.after(0, lambda: toggle_label.config(text="Clicking: OFF"))
-    root.after(0, lambda: start_button.config(text="Start Scanning"))
+def run_scanner_worker():
+    try:
+        click_color_in_area(area)
+    except Exception as error:
+        message = f"Scanner worker recovered from {type(error).__name__}: {error}"
+        print(message)
+        root.after(0, lambda text=message: status_label.config(text=text))
+
+
+def ensure_scanner_worker():
+    global scanner_thread
+    if running and (scanner_thread is None or not scanner_thread.is_alive()):
+        scanner_thread = threading.Thread(target=run_scanner_worker, daemon=True)
+        scanner_thread.start()
+
+
+def monitor_scanner_worker():
+    if running and (scanner_thread is None or not scanner_thread.is_alive()):
+        status_label.config(text="Scanner stopped unexpectedly; restarting it.")
+        ensure_scanner_worker()
+    root.after(500, monitor_scanner_worker)
 
 
 def toggle_running():
@@ -293,22 +311,13 @@ def toggle_running():
         root.lift()
         return
 
-    if scanner_thread is not None and scanner_thread.is_alive():
-        status_label.config(text="The previous scan is stopping; try again in a moment.")
-        return
-
     running = True
     clicking = True
     toggle_label.config(text="Clicking: ON")
     start_button.config(text="Stop Scanning")
     status_label.config(text="Starting scan. The app will minimize so the browser is visible.")
     root.iconify()
-    def start_scanner():
-        global scanner_thread
-        if running:
-            scanner_thread = threading.Thread(target=click_color_in_area, args=(area,), daemon=True)
-            scanner_thread.start()
-    root.after(700, start_scanner)
+    root.after(700, ensure_scanner_worker)
 
 
 def toggle_clicking():
@@ -449,4 +458,5 @@ def on_release(key):
 listener = keyboard.Listener(on_press=on_press, on_release=on_release)
 listener.start()
 
+root.after(500, monitor_scanner_worker)
 root.mainloop()
