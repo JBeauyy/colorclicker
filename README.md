@@ -29,6 +29,13 @@ python -m pip install -r requirements.txt
 python Win-main.py
 ```
 
+To install it as a desktop application on Windows, right-click `setup-windows.ps1`, choose **Run with PowerShell**, and approve the execution if prompted. The script creates the virtual environment, installs dependencies, and adds a **Color Clicker** shortcut to your Desktop. Double-click that shortcut to launch the GUI without a console window. If PowerShell blocks the script, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup-windows.ps1
+```
+
 Linux:
 
 ```bash
